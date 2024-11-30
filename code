@@ -1,0 +1,154 @@
+#include <Keypad.h>
+#include <LiquidCrystal_I2C.h>
+#include <SoftwareSerial.h>
+
+//Create software serial object to communicate with HC-05
+SoftwareSerial mySerial(12, 11);
+const int ROW_NUM = 4;
+const int COLUMN_NUM = 4;
+int LED = 0 ;
+int locked = 1 ;
+char keys[ROW_NUM][COLUMN_NUM] = {
+    {'1', '2', '3', 'A'},
+    {'4', '5', '6', 'B'},
+    {'7', '8', '9', 'C'},
+    {'*', '0', '#', 'D'}
+};
+
+byte pin_rows[ROW_NUM] = {9, 8, 7, 6};
+byte pin_column[COLUMN_NUM] = {5, 4, 3, 2};
+
+Keypad keypad = Keypad(makeKeymap(keys), pin_rows, pin_column, ROW_NUM, COLUMN_NUM);
+
+const String password_1 = "23AB#";
+const String password_2 = "580#";
+const String password_3 = "4545B";
+String input_password;
+
+// LCD setup
+LiquidCrystal_I2C lcd(0x27, 16, 2); // I2C address 0x27, 16 columns and 2 rows
+
+const int PIR_PIN = 10; // PIR sensor pin
+boolean personNearby = false;
+
+void setup()
+{
+    Serial.begin(9600);
+    input_password.reserve(32);
+    mySerial.begin(9600);
+  pinMode(13, OUTPUT);
+    Serial.println("Initializing...");
+    Serial.println("The device started, now you can pair it with Bluetooth!");
+    // LCD initialization
+    pinMode(0, OUTPUT);
+    lcd.init();
+    lcd.backlight();
+    lcd.setCursor(0, 0);
+    lcd.print("Enter password:");
+
+    pinMode(PIR_PIN, INPUT);
+}
+
+void loop()
+{
+    // Check if a person is nearby using PIR sensor
+    personNearby = digitalRead(PIR_PIN);
+    Serial.println(personNearby);
+
+    if(locked == 1 && personNearby == 1){
+      digitalWrite(13, HIGH);
+      digitalWrite(0, HIGH) ;
+      delay(200);
+      digitalWrite(13, LOW);
+      digitalWrite(0, LOW);
+      mySerial.write("Alert!!Intruder\n");
+      
+    }
+    if (mySerial.available())
+    {
+        String command = mySerial.readStringUntil('\n');
+        Serial.println(command);
+        if (command == "open"&& locked == 1)
+        {
+            unlockDoor();
+        }
+        else if (command == "lock"&& locked == 0)
+        {
+            lockDoor();
+        }
+    }
+    if(locked == 0){
+        lcd.clear();
+        lcd.setCursor(1,0);
+        lcd.print("Door Unlocked") ;
+    }
+    
+    // if (personNearby)
+    // {
+        delay(100);
+        char key = keypad.getKey();
+        //Serial.println(key);
+        lcd.backlight();
+
+        if (key)
+        {
+            input_password += key; // Append new character to input password string
+            lcd.setCursor(input_password.length() - 1, 1); // Move cursor to the last character position
+            lcd.print(key);                                  // Print the actual key pressed
+
+            if (key == '*')
+            {
+                input_password = "";
+                lcd.clear();
+                lcd.setCursor(0, 0);
+                lcd.print("Enter password:");
+            }
+            else if (key == '#')
+            {
+                if (input_password == password_1 || input_password == password_2 || input_password == password_3 && locked == 1)
+                {
+                    unlockDoor();
+                }
+                else if (locked == 1)
+                {
+                    lcd.clear();
+                    lcd.print("Incorrect password");
+                    delay(1000);
+                    lcd.clear();
+                    lcd.print("Enter password:");
+                }
+                else if(locked == 0){
+                  lockDoor() ;
+                }
+                input_password = "";
+            }
+        }
+    }
+//}
+
+void unlockDoor()
+{
+    lcd.clear();
+    lcd.print("Correct password");
+    delay(1000);
+    lcd.clear();
+    lcd.print("Unlocking...");
+    delay(100);
+    lcd.clear();
+    lcd.print(" Unlocked ");
+    locked = 0 ;
+    mySerial.write("Door Opened");
+    // Add code here to physically unlock the door (e.g., activate a relay)
+}
+
+void lockDoor()
+{
+    lcd.clear();
+    lcd.print("Locking...");
+    delay(1000);
+    lcd.clear();
+    lcd.print(" Locked ");
+    locked =1 ;
+    mySerial.write("Door Closed");
+    // Add code here to physically lock the door (e.g., deactivate a relay)
+}
